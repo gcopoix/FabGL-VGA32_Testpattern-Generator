@@ -96,15 +96,13 @@ int shrinkX = 0;
 int shrinkY = 0;
 
 
-fabgl::VGA16Controller VGAController;
-fabgl::Canvas canvas(&VGAController);
+fabgl::VGAPalettedController* VGAController = NULL;
 
 
 void printHelp()
 {
   Serial.printf("Modeline studio\n");
   Serial.printf("Chip Revision: %d   Chip Frequency: %d MHz\n\n", ESP.getChipRevision(), ESP.getCpuFreqMHz());
-  Serial.printf("%s\n", VGAController.getResolutionTimings()->label);
   Serial.printf("\nScreen move:\n");
   Serial.printf("  w = Move Up   z = Move Down   a = Move Left   s = Move Right\n");
   Serial.printf("Screen shrink:\n");
@@ -130,7 +128,7 @@ void printHelp()
 
 void printInfo()
 {
-  auto t = VGAController.getResolutionTimings();
+  auto t = VGAController->getResolutionTimings();
   Serial.printf("Modeline \"%s\" %2.8g %d %d %d %d %d %d %d %d %cHSync %cVSync %s %s\n",
                 t->label,
                 t->frequency / 1000000.0,
@@ -156,8 +154,8 @@ void printInfo()
   if (shrinkX || shrinkY) {
     Serial.printf("shrinkScreen(%d, %d)\n", shrinkX, shrinkY);
   }
-  Serial.printf("Screen size   : %d x %d\n", VGAController.getScreenWidth(),   VGAController.getScreenHeight());
-  Serial.printf("Viewport size : %d x %d\n", VGAController.getViewPortWidth(), VGAController.getViewPortHeight());
+  Serial.printf("Screen size   : %d x %d\n", VGAController->getScreenWidth(),   VGAController->getScreenHeight());
+  Serial.printf("Viewport size : %d x %d\n", VGAController->getViewPortWidth(), VGAController->getViewPortHeight());
   Serial.printf("Free memory (total, min, largest): %d, %d, %d\n\n", heap_caps_get_free_size(MALLOC_CAP_32BIT),
                                                                      heap_caps_get_minimum_free_size(MALLOC_CAP_32BIT),
                                                                      heap_caps_get_largest_free_block(MALLOC_CAP_32BIT));
@@ -165,6 +163,8 @@ void printInfo()
 
 static void updateScreen()
 {
+  fabgl::Canvas canvas(VGAController);
+
   // Update the screen with an retro-style TV test image
   static const Color barColors[] = { Color::BrightWhite,   Color::BrightYellow, Color::BrightCyan, Color::BrightGreen,
                                      Color::BrightMagenta, Color::BrightRed,    Color::BrightBlue, Color::Black };
@@ -238,11 +238,11 @@ static void updateScreen()
     canvas.setBrushColor(cols[i]);
     canvas.fillRectangle(max(x1, X[F]+1), Y[l], x2-1, Y[l+1]-1);
   }
-  fabgl::VGATimings const* tim = VGAController.getResolutionTimings();
+  fabgl::VGATimings const* tim = VGAController->getResolutionTimings();
   char str[64];
   snprintf(str, sizeof(str), "\"%s\" (%.3fMHz)", tim->label, tim->frequency/1000000.0);
   size_t n = strlen(str);
-  canvas.setPenColor(Color::BrightWhite);
+  canvas.setPenColor(Color::Black);
   canvas.selectFont(W<=320 ? &fabgl::FONT_5x8 : &fabgl::FONT_8x8);
   canvas.drawText((W-n*canvas.getFontInfo()->width)/2, Y[l] + ((Y[l+1]-Y[l])-canvas.getFontInfo()->height)/2, str);
 
@@ -253,7 +253,40 @@ static void updateScreen()
   canvas.endUpdate();
 }
 
-static void updateResolution(int inc=1) {
+static void openVGAController()
+{
+  // check VGA Controller with highest available color depth depending on available memory.
+  // May reduce if the desired resolution can't be achieved with the current color depth
+  for (int colors = 16; colors >= 2; colors /= 2)
+  {
+    if (VGAController) {
+     VGAController->end();
+     delete VGAController;
+   }
+   switch (colors) {
+      case 16:
+        VGAController = new fabgl::VGA16Controller();
+        break;
+      case 8:
+        VGAController = new fabgl::VGA8Controller();
+        break;
+      case 4:
+        VGAController = new fabgl::VGA4Controller();
+        break;
+      default:
+        VGAController = new fabgl::VGA2Controller();
+        break;
+    }
+    VGAController->begin();
+    VGAController->setResolution(PresetResolutions[currentResolution]);
+    if ((VGAController->getScreenHeight() - VGAController->getViewPortHeight()) <= 3) {
+      break;
+    }
+  };
+}
+
+static void updateResolution(int inc=0)
+{
   moveX = moveY = shrinkX = shrinkY = 0;
   currentResolution += inc;
   if (currentResolution >= ARRAY_SIZE(PresetResolutions)) {
@@ -262,7 +295,7 @@ static void updateResolution(int inc=1) {
   if (currentResolution < 0) {
     currentResolution = ARRAY_SIZE(PresetResolutions) - 1;
   }
-  VGAController.setResolution(PresetResolutions[currentResolution]);
+  openVGAController();
   updateScreen();
   printInfo();
 }
@@ -279,11 +312,8 @@ void setup()
   // avoid garbage into the UART
   delay(500);
 
-  VGAController.begin();
-  VGAController.setResolution(PresetResolutions[currentResolution]);
-  updateScreen();
   printHelp();
-  printInfo();
+  updateResolution(0);
 }
 
 
@@ -299,27 +329,27 @@ void loop()
         break;
       case 'w':
         --moveY;
-        VGAController.moveScreen(0, -1);
+        VGAController->moveScreen(0, -1);
         printInfo();
         break;
       case 'z':
         ++moveY;
-        VGAController.moveScreen(0, +1);
+        VGAController->moveScreen(0, +1);
         printInfo();
         break;
       case 'a':
         --moveX;
-        VGAController.moveScreen(-1, 0);
+        VGAController->moveScreen(-1, 0);
         printInfo();
         break;
       case 's':
         ++moveX;
-        VGAController.moveScreen(+1, 0);
+        VGAController->moveScreen(+1, 0);
         printInfo();
         break;
       case 'x':
         moveX = moveY = shrinkX = shrinkY = 0;
-        VGAController.setResolution(PresetResolutions[currentResolution]);
+        VGAController->setResolution(PresetResolutions[currentResolution]);
         updateScreen();
         printInfo();
         break;
@@ -329,76 +359,76 @@ void loop()
         break;
       case '"':
         moveX = moveY = shrinkX = shrinkY = 0;
-        VGAController.setResolution( (String("\"") + Serial.readStringUntil('\n')).c_str() );
+        VGAController->setResolution( (String("\"") + Serial.readStringUntil('\n')).c_str() );
         updateScreen();
         printInfo();
         break;
       ///*
       case 'e':
       case 'E':
-        t = *VGAController.getResolutionTimings();
+        t = *VGAController->getResolutionTimings();
         t.HFrontPorch = (c == 'e' ? t.HFrontPorch - 1 : t.HFrontPorch + 1);
         t.HBackPorch = (c == 'e' ? t.HBackPorch + 1 : t.HBackPorch - 1);
-        VGAController.setResolution(t);
+        VGAController->setResolution(t);
         updateScreen();
         printInfo();
         break;
       case 'r':
       case 'R':
-        t = *VGAController.getResolutionTimings();
+        t = *VGAController->getResolutionTimings();
         t.HSyncPulse = (c == 'r' ? t.HSyncPulse - 1 : t.HSyncPulse + 1);
         t.HBackPorch = (c == 'r' ? t.HBackPorch + 1 : t.HBackPorch - 1);
-        VGAController.setResolution(t);
+        VGAController->setResolution(t);
         updateScreen();
         printInfo();
         break;
       case 't':
       case 'T':
-        t = *VGAController.getResolutionTimings();
+        t = *VGAController->getResolutionTimings();
         t.HBackPorch = (c == 't' ? t.HBackPorch - 1 : t.HBackPorch + 1);
         t.HFrontPorch = (c == 't' ? t.HFrontPorch + 1 : t.HFrontPorch - 1);
-        VGAController.setResolution(t);
+        VGAController->setResolution(t);
         updateScreen();
         printInfo();
         break;
       case 'y':
       case 'Y':
-        t = *VGAController.getResolutionTimings();
+        t = *VGAController->getResolutionTimings();
         t.VFrontPorch = (c == 'y' ? t.VFrontPorch - 1 : t.VFrontPorch + 1);
         t.VBackPorch = (c == 'y' ? t.VBackPorch + 1 : t.VBackPorch - 1);
-        VGAController.setResolution(t);
+        VGAController->setResolution(t);
         updateScreen();
         printInfo();
         break;
       case 'u':
       case 'U':
-        t = *VGAController.getResolutionTimings();
+        t = *VGAController->getResolutionTimings();
         t.VSyncPulse = (c == 'u' ? t.VSyncPulse - 1 : t.VSyncPulse + 1);
         t.VBackPorch = (c == 'u' ? t.VBackPorch + 1 : t.VBackPorch - 1);
-        VGAController.setResolution(t);
+        VGAController->setResolution(t);
         updateScreen();
         printInfo();
         break;
       case 'i':
       case 'I':
-        t = *VGAController.getResolutionTimings();
+        t = *VGAController->getResolutionTimings();
         t.VBackPorch = (c == 'i' ? t.VBackPorch - 1 : t.VBackPorch + 1);
         t.VFrontPorch = (c == 'i' ? t.VFrontPorch + 1 : t.VFrontPorch - 1);
-        VGAController.setResolution(t);
+        VGAController->setResolution(t);
         updateScreen();
         printInfo();
         break;
       //*/
       case 'o':
       case 'O':
-        t = *VGAController.getResolutionTimings();
+        t = *VGAController->getResolutionTimings();
         t.frequency = (c == 'o' ? t.frequency - 5000 : t.frequency + 5000);
-        VGAController.setResolution(t);
+        VGAController->setResolution(t);
         updateScreen();
         printInfo();
         break;
       case '.':
-        t = *VGAController.getResolutionTimings();
+        t = *VGAController->getResolutionTimings();
         switch (t.HStartingBlock) {
           case VGAScanStart::FrontPorch:
             t.HStartingBlock = VGAScanStart::Sync;
@@ -413,31 +443,31 @@ void loop()
             t.HStartingBlock = VGAScanStart::FrontPorch;
             break;
         }
-        VGAController.setResolution(t);
+        VGAController->setResolution(t);
         updateScreen();
         printInfo();
         break;
       case 'n':
         ++shrinkX;
-        VGAController.shrinkScreen(+1, 0);
+        VGAController->shrinkScreen(+1, 0);
         updateScreen();
         printInfo();
         break;
       case 'N':
         --shrinkX;
-        VGAController.shrinkScreen(-1, 0);
+        VGAController->shrinkScreen(-1, 0);
         updateScreen();
         printInfo();
         break;
       case 'm':
         ++shrinkY;
-        VGAController.shrinkScreen(0, +1);
+        VGAController->shrinkScreen(0, +1);
         updateScreen();
         printInfo();
         break;
       case 'M':
         --shrinkY;
-        VGAController.shrinkScreen(0, -1);
+        VGAController->shrinkScreen(0, -1);
         updateScreen();
         printInfo();
         break;
@@ -448,7 +478,7 @@ void loop()
   static int lastButtonState = HIGH;
   int currentButtonState = digitalRead(VP_BUTTON_PIN);
   if (lastButtonState == HIGH && currentButtonState == LOW) {
-    updateResolution();
+    updateResolution(1);
   }
   lastButtonState = currentButtonState;
 }

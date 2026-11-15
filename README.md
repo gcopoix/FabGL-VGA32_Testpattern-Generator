@@ -8,7 +8,8 @@ This project is a VGA Mode test pattern generator for the [LilyGO VGA32](https:/
 
 It is based on [ModelineStudio](https://github.com/fdivitto/FabGL/tree/master/examples/VGA/ModelineStudio) sample of the [FabGL](https://github.com/fdivitto/FabGL) library with some additional features:
 - typical retro TV-like test image generation
-- all [supported VGA Modes](https://github.com/fdivitto/FabGL/blob/master/src/fabglconf.h#L172-L324) (16 colors)
+- all [supported VGA Modes](https://github.com/fdivitto/FabGL/blob/master/src/fabglconf.h#L172-L324) \
+  (16 colors by default (may be reduced on higher resolutions due to ressource limits))
 - next Video mode selection on PROG Button press
 - transferred to [PlatformIO](https://platformio.org)
 - [VisusalStudio Code](https://code.visualstudio.com) setup using [PlatformIO IDE](https://github.com/platformio/platformio-vscode-ide) extension
