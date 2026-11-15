@@ -1,0 +1,21 @@
+{
+	// https://code.visualstudio.com/docs/editor/workspaces
+	// https://code.visualstudio.com/docs/editor/multi-root-workspaces
+	// https://code.visualstudio.com/docs/editor/variables-reference
+
+	"folders": [
+		{
+			"path": "."
+		},
+	],
+	"settings": {
+		"terminal.integrated.profiles.linux": {
+			"bash": {
+				"path": "bash",
+				"env": {
+					"PATH": "${env:PATH}:${env:HOME}/.platformio/penv/bin",
+				},
+			}
+		}
+	}
+}

@@ -1,0 +1,13 @@
+{
+	"cmake.configureOnOpen": false,
+	"terminal.integrated.defaultProfile.linux": "bash",
+	"terminal.integrated.profiles.linux": {
+		"bash": {
+			"path": "bash",
+			"env": {
+				"PATH": "${env:PATH}:${env:HOME}/.platformio/penv/bin",
+			},
+		}
+	},
+	"search.useIgnoreFiles": false
+}
